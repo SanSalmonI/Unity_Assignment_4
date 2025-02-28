@@ -3,78 +3,123 @@ using UnityEngine;
 using UnityEngine.AI;
 using System.Collections.Generic;
 
-// Ctrl + r + r : Allows multiple variables using the same name to be renamed.
-
 public class AiAgent : MonoBehaviour
 {
+    [Header("AI Settings")]
     public NavMeshAgent navMeshAgent;
-
     public Transform chaseTarget;
     public List<Transform> waypoints;
+
+    [Header("State Objects")]
+    [Tooltip("Object shown while the AI is in Patrol state.")]
+    public GameObject patrolObject;
+    [Tooltip("Object shown while the AI is in Chase state.")]
+    public GameObject chaseObject;
+    [Tooltip("Object shown while the AI is in Investigate state.")]
+    public GameObject investigateObject;
 
     private int currentWaypoint = 0;
 
     private AIState aiState;
-
-    // Start is called once before the first execution of Update after the MonoBehaviour is created
-    void Start()
+    public AIState CurrentState
     {
-        navMeshAgent.SetDestination(waypoints[0].position);
-        aiState = AIState.Patrol;
+        get => aiState;
+        set
+        {
+            if (aiState != value)
+            {
+                aiState = value;
+                UpdateStateObjects();
+            }
+        }
     }
 
-    // Update is called once per frame
+    void Start()
+    {
+        if (waypoints.Count > 0)
+        {
+            navMeshAgent.SetDestination(waypoints[0].position);
+        }
+
+        // Set initial state
+        CurrentState = AIState.Patrol;
+    }
+
     void Update()
     {
-        // navMeshAgent.SetDestination(chaseTarget.position);
-
-        if (aiState == AIState.Patrol)
+        switch (CurrentState)
         {
-            if (navMeshAgent.remainingDistance <= navMeshAgent.stoppingDistance)
-            {
-                currentWaypoint = (currentWaypoint + 1) % waypoints.Count;
-                navMeshAgent.SetDestination(waypoints[currentWaypoint].position);
-            }
-        }
+            case AIState.Patrol:
+                PatrolLogic();
+                break;
 
-        else if (aiState == AIState.Chase)
+            case AIState.Chase:
+                ChaseLogic();
+                break;
+
+            case AIState.Investigate:
+                InvestigateLogic();
+                break;
+        }
+    }
+
+    private void PatrolLogic()
+    {
+        // If agent has reached the waypoint, move to the next
+        if (!navMeshAgent.pathPending &&
+            navMeshAgent.remainingDistance <= navMeshAgent.stoppingDistance)
         {
-            navMeshAgent.SetDestination(chaseTarget.position);
-
-            if (Vector3.Distance(transform.position, chaseTarget.position) > (float) 15)
-            {
-                aiState = AIState.Patrol;
-
-                navMeshAgent.SetDestination(waypoints[currentWaypoint].position);
-            }
+            currentWaypoint = (currentWaypoint + 1) % waypoints.Count;
+            navMeshAgent.SetDestination(waypoints[currentWaypoint].position);
         }
+    }
 
-        else if (aiState == AIState.Investigate)
+    private void ChaseLogic()
+    {
+        if (chaseTarget == null) return;
+
+        navMeshAgent.SetDestination(chaseTarget.position);
+
+        // If the target is too far, switch back to patrol
+        if (Vector3.Distance(transform.position, chaseTarget.position) > 15f)
         {
-            navMeshAgent.SetDestination(transform.position);
+            CurrentState = AIState.Patrol;
+            navMeshAgent.SetDestination(waypoints[currentWaypoint].position);
         }
+    }
 
-        // When chaseTarget is reached, Move to next one.
-        
+    private void InvestigateLogic()
+    {
+        // For Investigate, we can stop the agent
+        navMeshAgent.SetDestination(transform.position);
     }
 
     public void PlayerSpotted(Transform playerTarget)
     {
         chaseTarget = playerTarget;
         navMeshAgent.SetDestination(chaseTarget.position);
-        aiState = AIState.Chase;
+        CurrentState = AIState.Chase;
     }
 
     public void StartInvestigate()
     {
-        aiState = AIState.Investigate;
+        CurrentState = AIState.Investigate;
     }
+
     public void EndInvestigate()
     {
-        if (aiState == AIState.Investigate)
+        if (CurrentState == AIState.Investigate)
         {
-            aiState = AIState.Patrol;
+            CurrentState = AIState.Patrol;
+            navMeshAgent.SetDestination(waypoints[currentWaypoint].position);
         }
+    }
+
+    private void UpdateStateObjects()
+    {
+        if (patrolObject) patrolObject.SetActive(CurrentState == AIState.Patrol);
+        if (chaseObject) chaseObject.SetActive(CurrentState == AIState.Chase);
+        if (investigateObject) investigateObject.SetActive(CurrentState == AIState.Investigate);
     }
 }
 
